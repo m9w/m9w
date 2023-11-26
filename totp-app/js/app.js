@@ -1,5 +1,5 @@
 function getCurrentSeconds() {
-  return Math.round(new Date().getTime() / 1000.0);
+  return new Date().getTime() / 1000.0;
 }
 
 function stripSpaces(str) {
@@ -44,7 +44,7 @@ const app = Vue.createApp({
     this.getQueryParameters()
     this.update();
 
-    this.intervalHandle = setInterval(this.update, 1000);
+    this.intervalHandle = setInterval(this.update, 25);
 
     this.clipboardButton = new ClipboardJS('#clipboard-button');
   },
