@@ -29,6 +29,9 @@
         width: 600px;
       }
     }
+    .settings {
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -43,28 +46,28 @@
     <div class="container">
 
       <h1 class="title">TOTP Token Generator</h1>
-
-      <div class="field">
-        <label class="label is-uppercase">Your Secret Key</label>
-        <div class="control">
-          <input class="input" type="text" v-model="secret_key" placeholder="The secret key (in base-32 format)">
+      <div class="settings">
+        <div class="field">
+          <label class="label is-uppercase">Your Secret Key</label>
+          <div class="control">
+            <input class="input" type="text" v-model="secret_key" placeholder="The secret key (in base-32 format)">
+          </div>
+        </div>
+  
+        <div class="field">
+          <label class="label is-uppercase">Number of Digits</label>
+          <div class="control">
+            <input class="input" type="text" v-model="digits" placeholder="Usually 6">
+          </div>
+        </div>
+  
+        <div class="field">
+          <label class="label is-uppercase">Token Period (in seconds)</label>
+          <div class="control">
+            <input class="input" type="text" v-model="period" placeholder="Usually 30">
+          </div>
         </div>
       </div>
-
-      <div class="field">
-        <label class="label is-uppercase">Number of Digits</label>
-        <div class="control">
-          <input class="input" type="text" v-model="digits" placeholder="Usually 6">
-        </div>
-      </div>
-
-      <div class="field">
-        <label class="label is-uppercase">Token Period (in seconds)</label>
-        <div class="control">
-          <input class="input" type="text" v-model="period" placeholder="Usually 30">
-        </div>
-      </div>
-
       <div class="content">
         <span class="has-text-grey is-size-7">Updating in {{ updatingIn }} seconds</span>
         <progress class="progress is-info is-small" v-bind:value="updatingIn" :max="period"></progress>
