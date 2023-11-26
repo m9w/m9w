@@ -14,15 +14,6 @@
       height: 100%;
     }
 
-    body > footer {
-      position: sticky;
-      top: 100vh;
-    }
-
-    .footer {
-      padding: 2rem;
-    }
-
     @media screen and (min-width: 1068px) {
       .container {
         max-width: 600px;
@@ -73,27 +64,12 @@
         <progress class="progress is-info is-small" v-bind:value="updatingIn" :max="period"></progress>
       </div>
 
-      <div class="box">
+      <div class="box" id="clipboard-button" data-clipboard-target="#token" title="Copy token to clipboard">
         <p class="title is-size-1 has-text-centered" id="token">{{ token }}</p>
-      </div>
-
-      <div class="control is-clearfix">
-        <a class="button is-large is-light is-pulled-right" id="clipboard-button" data-clipboard-target="#token" title="Copy token to clipboard">
-          <img src="img/clippy.svg" height="36" width="36">
-        </a>
       </div>
 
     </div>
 
   </section>
-
-  <footer class="footer">
-    <div class="container">
-      <div class="content has-text-centered">
-        Built by <a href="https://dan.hersam.com">Dan Hersam</a>. Source on <a href="https://github.com/jaden/totp-generator">Github</a>.
-      </div>
-    </div>
-  </footer>
-
 </body>
 </html>
