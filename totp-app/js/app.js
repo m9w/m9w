@@ -44,7 +44,7 @@ const app = Vue.createApp({
     this.getQueryParameters()
     this.updateTimer();
     this.updateCode();
-    this.intervalHandle = setInterval(this.updateTimer, 25);
+    this.intervalHandle = setInterval(this.updateTimer, 100);
     this.clipboardButton = new ClipboardJS('#clipboard-button');
   },
 
