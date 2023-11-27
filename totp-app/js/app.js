@@ -72,6 +72,7 @@ const app = Vue.createApp({
     
     updateCode: function () {
       this.token = truncateTo(this.totp.generate(), this.digits);
+      this.tokenValue = this.token;
     },
 
     copied: function () {
