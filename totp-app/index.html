@@ -170,8 +170,8 @@
         <progress class="progress is-info is-small" v-bind:value="updatingIn" :max="period"></progress>
       </div>
 
-      <div class="box" id="clipboard-button" data-clipboard-target="#token" title="Copy token to clipboard">
-        <p class="hiddenselect neonText is-size-1 has-text-centered" id="token" onclick="this.innerText='Copied'">{{ token }}</p>
+      <div class="box" id="clipboard-button" @click="copied" data-clipboard-target="#token" title="Copy token to clipboard">
+        <p class="hiddenselect neonText is-size-1 has-text-centered" id="token">{{ token }}</p>
       </div>
     </div>
   </section>
