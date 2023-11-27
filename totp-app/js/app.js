@@ -42,10 +42,9 @@ const app = Vue.createApp({
   mounted: function () {
     this.getKeyFromUrl();
     this.getQueryParameters()
-    this.update();
-
-    this.intervalHandle = setInterval(this.update, 25);
-
+    this.updateTimer();
+    this.updateCode();
+    this.intervalHandle = setInterval(this.updateTimer, 25);
     this.clipboardButton = new ClipboardJS('#clipboard-button');
   },
 
