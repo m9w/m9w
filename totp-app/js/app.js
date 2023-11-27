@@ -70,6 +70,11 @@ const app = Vue.createApp({
       this.token = truncateTo(this.totp.generate(), this.digits);
     },
 
+    copied: function () {
+      $('#token').innerText = 'Copied';
+      setTimeout(this.update, 1000);
+    },
+
     getKeyFromUrl: function () {
       const key = document.location.hash.replace(/[#\/]+/, '');
 
