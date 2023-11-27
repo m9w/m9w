@@ -72,7 +72,7 @@ const app = Vue.createApp({
 
     copied: function () {
       this.token = 'COPIED';
-      setTimeout(this.update, 10000);
+      //setTimeout(this.update, 10000);
     },
 
     getKeyFromUrl: function () {
