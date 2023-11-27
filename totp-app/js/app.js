@@ -71,7 +71,7 @@ const app = Vue.createApp({
     },
 
     copied: function () {
-      $('#token').innerText = 'Copied';
+      this.token = 'COPIED';
       setTimeout(this.update, 1000);
     },
 
