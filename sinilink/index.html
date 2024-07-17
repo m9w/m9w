@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Music Control Panel</title>
+    <style>
+        body {
+            background-color: #1C1C1C;
+            color: #FFFFFF;
+            font-family: 'Roboto', sans-serif;
+            flex-direction: column;
+            height: 100vh;
+            margin: 0;
+        }
+        .flex {
+            display: flex;
+            gap: 0.5em;
+            justify-content: space-around;
+            align-items: center;
+        }
+        .flex > * {
+            flex-grow: 1;
+        }
+        .control-panel {
+            width: 300px;
+            padding: 20px;
+            background-color: #2E2E2E;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+            flex-direction: column;
+            flex-grow: 0;
+        }
+        .control-panel > * {
+            width: 100%;
+        }
+        .control-panel label {
+            position: relative;
+            left: -4px;
+            font-size: small;
+        }
+        .control-panel select, 
+        .control-panel input {
+            width: 100%;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            background-color: #3C3C3C;
+            color: #FFFFFF;
+            margin: 0;
+        }
+        .input {
+            display: flex;
+                position: relative;
+        }
+        
+        .input > input {
+            border-radius: 5px;
+            padding: 10px 40px 10px 10px;
+        }
+        
+        .input > button {
+            padding: 5px !important;
+            font-size: 19px;
+            height: 100%;
+            border-radius: 0 5px 5px 0 !important;
+            background-color: transparent !important;
+            text-shadow: 0 0 6px white;
+            position: absolute;
+            right: 0;
+        }
+        
+        .control-panel button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            background-color: #3498DB;
+            color: #FFFFFF;
+            cursor: pointer;
+        }
+        .control-panel button:active {
+            background-color: #206c9f;
+        }
+        .control-panel button:disabled {
+            background-color: #5e5f5f;
+        }
+        .control-panel .media-controls div {
+            border-radius: 50%;
+            display: flex;
+            font-size: 35pt;
+            flex-grow: 0;
+            cursor: pointer;
+        }
+    </style>
+    <script>
+    class SinilinkBluetoothFacade {
+        constructor() {        
+            this.SOURCES = {
+                sdCard:    0x03,
+                usb:       0x04,
+                bluetooth: 0x14,
+                unknown:   0x15,
+                aux:       0x16,
+                audioCard: 0x17,
+            };
+            
+            this.PLAYING_ORDERS = {
+                listcycle:   0x0f,
+                singleHead:  0x10,
+                singlecycle: 0x11,
+                random:      0x12,
+                order:       0x13,
+            };
+            
+            this.EQUALIZERS = {
+                normal:  0x09,
+                rock:    0x0a,
+                pop:     0x0b,
+                classic: 0x0c,
+                jazz:    0x0d,
+                country: 0x0e,
+            };
+        }
+        
+        async connect() {
+            try {
+                if(!this.device) this.device = await navigator.bluetooth.requestDevice({
+                                    filters: [{name: "Sinilink-APP"}],
+                                    optionalServices: [0xAE00]
+                                });
+            
+                this.gatt = await this.device.gatt.connect();
+                let service = (await this.gatt.getPrimaryServices())[0];
+
+                this.commandCharacteristic = await service.getCharacteristic(0xAE10);
+                let source = await service.getCharacteristic(0xAE04);
+                source.addEventListener("characteristicvaluechanged", 
+                            e => this.parse([...Array(e.target.value.byteLength).keys()].map(i=>e.target.value.getUint8(i))));
+                source.startNotifications();
+                
+                await this.sendCommand("05 1e");
+                await this.sendCommand("05 1F");
+                await this.sendCommand("05 20");
+            } catch (e) {
+                console.log(e);
+                setTimeout(this.connect, 300);
+            }
+        }
+        
+        
+        disconnect(){
+            this.gatt.disconnect();
+        }
+        
+        getAudioSource() { return this.audioSource; }
+        isPlaying() { return this.playing; }
+        getPlayingOrder() { return this.playingOrder; }
+        getEqualizer() { return this.equalizer; }
+        isPlayToneActive() { return this.playTone; }
+        isPasswordEnabled() { return this.isPasswordEnabled; }
+        getVolume() { return this.volume; }
+        getName() {return this.name;}
+        getPasswd() {return this.password;}
+
+        setPassChangedListener(listener) {
+           this.passChanged = listener;
+        }
+        
+        setNameChangedListener(listener) {
+            this.nameChanged = listener;
+        }
+        
+        async setSource(source){
+            return await this.sendCommand('05 ' + Number(source).toString(16));
+        }
+        
+        async setRepeating(repeating) {
+            return await this.sendCommand('05 ' + Number(repeating).toString(16));
+        }
+        
+        async setEqualizer(equalizer) {
+            return await this.sendCommand('05 ' + Number(equalizer).toString(16));
+        }
+
+        async play()      { if(!this.playing) return await this.sendCommand('05 01'); }
+        async pause()     { if(this.playing) return await this.sendCommand('05 01'); }
+        async playPause() { return await this.sendCommand('05 01'); }
+        
+        async nextTrack() { return await this.sendCommand('05 08'); }
+        async prewTrack() { return await this.sendCommand('05 07'); }
+        async decVolume() { return await this.sendCommand('05 06'); }
+        async incVolume() { return await this.sendCommand('05 05'); }
+        async mute()      { return await this.sendCommand('05 1d'); }
+        async resetCredentials() { return await this.sendCommand('05 1a'); }
+        
+        async setVolume(x) {
+            if(x == this.volume) return;
+            let vol = x < 0 ? 0 : x > 31 ? 31 : x;
+            return await this.sendCommand('0F 1D ' + vol.toString(16) + ' 00'.repeat(9)).then(r => this.sendCommand('05 1F'));
+        }
+        
+        async enableTone(isEnable=true) {
+            if(isEnable != this.playTone) 
+                return await this.sendCommand('05 18').then(r => this.sendCommand('05 1F'));
+        }
+        
+        async enablePassword(isEnable=true) {
+            if(isEnable != this.isPasswordEnabled) 
+                return await this.sendCommand('05 19').then(r => this.sendCommand('05 1F'));
+        }
+        
+        async setName(name) {return await this.sendCommand("0F 1A " + this.strToHexCharCode(name));}
+        async setPasswd(pass) {return await this.sendCommand("0F 1B " + this.strToHexCharCode(pass));}
+        
+        //===========================================private section ==========================================
+        
+        calcCrc(line) {
+            let sum = line.split(" ").map(h=> parseInt(h, 16)).reduce((a, b) => a + b);
+            return parseInt(sum).toString(16).slice(-4).padStart(4, '0').match(/.{1,2}/g).join(' ');
+        }
+        
+        toHexArray(str) {
+            let data = str + " " + this.calcCrc(str);
+            if(this.debug) console.log("Sent data: " + data);
+            return new Uint8Array(data.split(" ").map(h=>parseInt(h, 16)));
+        }
+        
+        async sendCommand(hexStr) {
+            try {
+                return await this.commandCharacteristic.writeValueWithResponse(this.toHexArray("7E " + hexStr));
+            } catch (e) {
+                if((e+"").includes('GATT operation already in progress.')) return this.sendCommand(hexStr);
+                else {
+                    console.error(e);
+                    return await this.connect().then(s => this.sendCommand(hexStr));
+                }
+            }
+        }
+
+        strToHexCharCode(text) {
+            return ([...text].map(c => c.charCodeAt().toString(16).match(/.{1,2}/g).join(' ')).join(" ") + " 00".repeat(10)).slice(0, 29);
+        }
+
+        readStr(array, from, to) {
+            let end = array.indexOf(0, from);
+            if (end < 0 || end > to) end = to;
+            return String.fromCharCode(...array.slice(from, end))
+        }
+
+        parse(data) {
+            if(this.debug) console.log("Recived data:", data.map(x=>x.toString(16)).join(' ').toUpperCase());
+            if(data.slice(0, -2).reduce((a,b)=>a+b).toString(16).slice(-4)!=data.slice(-2).map(v=> v.toString(16)).join("")) return;
+            if(data[0] != 0x7e) return;
+            if(data[1] == 0xf) {
+                this.audioSource = data[4];
+                this.playing = !!(data[5]-1);
+                this.playingOrder = data[7];
+                this.equalizer = data[8];
+            } else if (data[1] == 0x10) {
+                if (data[2] == 0x1f) {
+                    this.playTone = !!data[3];
+                    this.isPasswordEnabled = !!data[4];
+                    this.volume = data[5];
+                    this.password = this.readStr(data, 6, 10);
+                if(this.passChanged && data[10]) this.passChanged(this.pass);
+                } else if((data[2] == 0x20)) {
+                    this.name = this.readStr(data, 3, 13);
+                    if(this.nameChanged && data[13]) this.nameChanged(this.name);
+                }
+            }
+            if (this.refresh) this.refresh();
+        }
+    }
+    </script>
+</head>
+<body class=flex>
+    <script>
+    const elem = (id) => document.querySelector("#" + id);
+    const sinilink = new SinilinkBluetoothFacade();
+    async function reset() {
+        sinilink.disconnect();
+        sinilink.device = null;
+        await sinilink.connect();
+    }
+    
+    sinilink.refresh = () => {
+        elem("play").innerText = sinilink.isPlaying() === true ? '⏸️' : '▶️';
+        if (sinilink.getVolume()) elem("volume").value = sinilink.getVolume();
+        elem("order").parentNode.style.display = sinilink.getAudioSource() < 5 ? 'block' : 'none';
+        elem("source").value = sinilink.getAudioSource();
+        elem("order").value = sinilink.getPlayingOrder();
+        elem("equalizer").value = sinilink.getEqualizer();
+        if(!elem("name").value && sinilink.getName()) elem("name").value = sinilink.getName();
+        if(!elem("password").value && sinilink.getPasswd()) elem("password").value = sinilink.getPasswd();
+    }
+    </script>
+    <div class="control-panel flex">
+        <div>
+            <label>Connection:</label>
+            <div class="flex">
+                <button onclick=sinilink.connect()>Connect 🔌</button>
+                <button disabled>New device</button>
+            </div>
+        </div>
+        <div class="flex">
+            <div>
+                <label for="source">Source:</label>
+                <select id="source" onchange="sinilink.setSource(this.value)">
+                    <option hidden disabled selected value></option>
+                    <option value=3>SD card</option>
+                    <option value=4>USB</option>
+                    <option value=20>Bluetooth</option>
+                    <option value=21>Unknown</option>
+                    <option value=22>AUX</option>
+                    <option value=23>Audio card</option>
+                </select>
+            </div>
+            <div style="display: none">
+                <label for="order">Order:</label>
+                <select id="order" onchange="sinilink.setRepeating(this.value)">
+                    <option hidden disabled selected value></option>
+                    <option value=15>Listcycle</option>
+                    <option value=16>Single head</option>
+                    <option value=17>Singlecycle</option>
+                    <option value=18>Random</option>
+                    <option value=19>Order</option>
+                </select>
+            </div>
+        </div>
+        <div>
+        <label for="equalizer">Equalizer:</label>
+        <select id="equalizer" onchange="sinilink.setEqualizer(this.value)">
+            <option hidden disabled selected value></option>
+            <option value=9>Normal</option>
+            <option value=10>Rock</option>
+            <option value=11>Pop</option>
+            <option value=12>Classic</option>
+            <option value=13>Jazz</option>
+            <option value=14>Country</option>
+        </select>
+        </div>
+        <div class="flex">
+            <div>
+                <label for="name">Name:</label>
+                <div class="input">
+                    <input type="text" id="name" maxlength="10">
+                    <button onclick="sinilink.setName(elem('name').value)">💾</button>
+                </div>
+            </div>
+            <div>
+                <label for="password">PIN:</label>
+                <div class="input">
+                    <input type="password" id="password"  pattern="[0-9]*" inputmode="numeric" maxlength="4">
+                    <button onclick="sinilink.setPasswd(elem('password').value)">💾</button>
+                </div>
+            </div>
+        </div>
+        <div>
+            <label>Actions:</label>
+            <div class="flex">
+                <button onclick=sinilink.mute()>🔇</button>
+                <button onclick=sinilink.resetCredentials()>Reset</button>
+            </div>
+        </div>
+        
+        <div>
+        <label for="volume">Volume:</label>
+            <div class="slider-container flex">
+                <button style="padding: 10px" onclick=sinilink.decVolume()>➖</button>
+                <input id="volume" type="range" style="padding:0" min="0" max="31" onchange=sinilink.setVolume(parseInt(this.value))>
+                <button style="padding: 10px" onclick=sinilink.incVolume()>➕</button>
+            </div>
+        </div>
+
+        <div class="media-controls flex">
+            <div onclick=sinilink.prewTrack()>⏮️</div>
+            <div id=play style="font-size: 60pt;" onclick=sinilink.playPause()>⏸️</div>
+            <div onclick=sinilink.nextTrack()>⏭️</div>
+        </div>
+    </div>
+</body>
+</html>
