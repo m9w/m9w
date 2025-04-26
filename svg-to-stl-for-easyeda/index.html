@@ -1,0 +1,289 @@
+<input type="file" id="file-input" multiple/>
+<label for=scale>Scale: </label> <input type="number" id="scale" value="200"/>
+<label for=autodownload>Autodownload: </label> <input type="checkbox" id="autodownload" checked/>
+
+<script src="https://unpkg.com/earcut@2.2.4/dist/earcut.min.js"></script>
+<script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
+
+<script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@v0.149.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@v0.149.0/examples/jsm/"
+    }
+  }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { STLExporter } from 'three/addons/exporters/STLExporter.js';
+
+const P = (x, y) => ({x:x,y:y});
+const BORDER = (s, e, d) => ({s:s,e:e,d:d});
+
+/*document.getElementById('file-input').addEventListener('change', function(e) {
+  let reader = new FileReader();
+  reader.onload = function(e) {  
+    let img = new Image();
+    window.imgg = img;
+    img.onload = processing;
+    img.name = e.target.;
+    img.src = e.target.result;
+  };
+  for (let file of e.target.files) reader.readAsDataURL(file);
+}, false);*/
+
+document.getElementById('file-input').addEventListener('change', function(e) {
+  for (let file of e.target.files) {
+    let reader = new FileReader();
+    reader.onload = e => {
+        let img = new Image();
+        window.imgg = img;
+        img.onload = processing;
+        img.name = file.name;
+        img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+}, false);
+
+function calc(dim){
+  return dim.baseVal.valueInSpecifiedUnits / dim.baseVal.value
+}
+
+
+function processing() {
+  let canvas = document.createElement("canvas");
+  let ctx = canvas.getContext("2d");
+  let scale = parseInt(document.querySelector("#scale").value);
+  console.log("Used scale:" + scale);
+  let wScale = 1/scale, hScale = 1/scale, ww = this.width, hh = this.height;
+  try {
+    let xml = new DOMParser().parseFromString(atob(this.src.substr(this.src.indexOf("base64,")+7)), "application/xml");
+    window.xx = xml; 
+    ww = xml.children[0].width.baseVal.valueInSpecifiedUnits;
+    hh = xml.children[0].height.baseVal.valueInSpecifiedUnits;
+    wScale = calc(xml.children[0].width) * (1 / scale);
+    hScale = calc(xml.children[0].height) * (1 / scale);
+  } catch {}
+  const h = 0.05;
+  canvas.width = ww*scale;
+  canvas.height = hh*scale;
+  wScale = 1/scale;
+  hScale = 1/scale;
+  
+  ctx.drawImage(this, 0, 0, canvas.width, canvas.height);
+
+  let pixels = [];
+  let imgData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  for (let i = 0; i < imgData.length; i+=4) if(imgData[i] == 0) pixels.push(i/4);
+
+  console.log(pixels.length); 
+
+  let matrix = createArray(canvas.width, canvas.height);
+  for (const pix of pixels) matrix[pix % canvas.width | 0][pix / canvas.width | 0] = true;
+
+  let polygons = extractPolygons(matrix);
+  let contours = [];
+  for (const p of polygons) contours.push(splitContours(p));
+
+  let triangles2d = [];
+  for (const c of contours) triangles2d.push(triangulate(c));
+
+  let triangles3d = [];
+
+  for (const triangle2d of triangles2d.flat()){
+    triangles3d.push([
+      [triangle2d[0][0]*wScale, triangle2d[0][1]*hScale, 0],
+      [triangle2d[1][0]*wScale, triangle2d[1][1]*hScale, 0],
+      [triangle2d[2][0]*wScale, triangle2d[2][1]*hScale, 0]]);
+    triangles3d.push([
+      [triangle2d[1][0]*wScale, triangle2d[1][1]*hScale, h],
+      [triangle2d[0][0]*wScale, triangle2d[0][1]*hScale, h],
+      [triangle2d[2][0]*wScale, triangle2d[2][1]*hScale, h]]);
+  }
+
+  for (const c of contours.flat()) {
+    let isOuter = false;
+    for(let x of contours) if(x.indexOf(c) === 0) isOuter = true;
+    let last = c[c.length-1];
+    for (const elem of c){
+      triangles3d.push([
+        [elem[0]*wScale, elem[1]*hScale, isOuter?0:h],
+        [elem[0]*wScale, elem[1]*hScale, isOuter?h:0],
+        [last[0]*wScale, last[1]*hScale, h]]);
+      triangles3d.push([
+        [last[0]*wScale, last[1]*hScale, isOuter?h:0],
+        [last[0]*wScale, last[1]*hScale, isOuter?0:h],
+        [elem[0]*wScale, elem[1]*hScale, 0]]);
+      last = elem;
+    }
+  }
+
+  createSTL(triangles3d, this.name+".stl");
+}
+
+function extractPolygons(matrix) {
+  let mtx = [];
+  for (const i in matrix){
+    mtx[i] = [];
+    for(const j in matrix[i]) mtx[i][j] = matrix[i][j];
+  }
+    
+  const polygons = [];
+
+  function bfs(x, y) {
+    const polygon = createArray(matrix.length, matrix[0].length);
+    for (const queue = [[x, y]]; queue.length > 0; ) {
+      const [x, y] = queue.pop();
+      mtx[x][y] = false;
+      if (!isInner(matrix, x, y)) polygon[x][y] = true;
+      if (isPolygon(mtx,x-1,y)) queue.push([x - 1, y]);
+      if (isPolygon(mtx,x+1,y)) queue.push([x + 1, y]);
+      if (isPolygon(mtx,x,y-1)) queue.push([x, y - 1]);
+      if (isPolygon(mtx,x,y+1)) queue.push([x, y + 1]);
+    }
+    return polygon;
+  }
+  for (const i in mtx) for (const j in mtx[i]) if (mtx[i][j]) polygons.push(bfs(i | 0, j | 0));
+  return polygons;
+}
+
+function splitContours(polygon){
+  let mtx = [];
+  for (const i in polygon){
+    mtx[i] = [];
+    for(const j in polygon[i]) mtx[i][j] = polygon[i][j];
+  }
+    
+  const contours = [];
+
+  function bfs(x, y) {
+    const contour = [];
+    while (true) {
+      mtx[x][y] = false;
+      contour.push([x, y]);
+      if (isPolygon(mtx,x,y+1)) y += 1; 
+      else if (isPolygon(mtx,x,y-1)) y -= 1; 
+      else if (isPolygon(mtx,x+1,y)) x += 1; 
+      else if (isPolygon(mtx,x-1,y)) x -= 1; 
+      else if (isPolygon(mtx,x-1,y-1)) { x -= 1; y -= 1; }
+      else if (isPolygon(mtx,x+1,y+1)) { x += 1; y += 1; }
+      else if (isPolygon(mtx,x+1,y-1)) { x += 1; y -= 1; }
+      else if (isPolygon(mtx,x-1,y+1)) { x -= 1; y += 1; }
+      else break;
+    }
+    return contour;
+  }
+  for (const i in mtx) for (const j in mtx[i]) if (mtx[i][j]) contours.push(bfs(i | 0, j | 0));
+  return contours;
+}
+
+function excludePointsOnLines(points) {
+  const result = [];
+  const n = points.length;
+  for (let i = 0; i < n; i++) {
+    const p1 = points[i];
+    const p2 = points[(i + 1) % n];
+    const p3 = points[(i + 2) % n];
+    if (!isPointOnLine(p1, p2, p3, 1)) 
+      result.push(p2);
+  }
+  return result;
+}
+
+function isPointOnLine(p1, p2, p3, tolerance) {
+  const [x1, y1] = p1;
+  const [x2, y2] = p2;
+  const [x3, y3] = p3;
+  const dxc = x3 - x1;
+  const dyc = y3 - y1;
+  const dxl = x2 - x1;
+  const dyl = y2 - y1;
+  const cross = dxc * dyl - dyc * dxl;
+  if (cross !== 0) {
+    return false;
+  }
+  if (Math.abs(dxl) >= Math.abs(dyl)) {
+    return dxl > 0 ? x1 - tolerance <= x3 && x3 <= x2 + tolerance : x2 - tolerance <= x3 && x3 <= x1 + tolerance;
+  } else {
+    return dyl > 0 ? y1 - tolerance <= y3 && y3 <= y2 + tolerance : y2 - tolerance <= y3 && y3 <= y1 + tolerance;
+  }
+}
+
+function isInner(m, x, y){
+  return isPolygon(m,x-1, y) && isPolygon(m,x+1, y) && isPolygon(m,x,y-1) && isPolygon(m,x,y+1);
+}
+
+function isPolygon(m, x, y){
+    try {
+        return m[x][y];
+    } catch (e) { 
+        return false;
+    }
+}
+        
+function triangulate(contours) {
+  let triangles = [];
+  let points = [...contours.flat(2)];
+  let inner = [contours[0].length];
+  for (let i = 1; i < contours.length - 1; i++) inner.push(inner[i-1] + contours[i].length);
+  if(contours.length == 1) inner = null;
+  for(const chunk of sliceIntoChunks(earcut(points, inner), 3)) 
+    triangles.push([[points[chunk[0]*2], points[chunk[0]*2+1]], [points[chunk[1]*2], points[chunk[1]*2+1]], [points[chunk[2]*2], points[chunk[2]*2+1]]]);
+  return triangles;
+}
+
+function sliceIntoChunks(arr, chunkSize) {
+    const res = [];
+    for (let i = 0; i < arr.length; i += chunkSize) {
+        const chunk = arr.slice(i, i + chunkSize);
+        res.push(chunk);
+    }
+    return res;
+}
+
+function createSTL(triangles, name) {
+  const geometry = new THREE.BufferGeometry();
+  const vertices = new Float32Array(triangles.length * 9);
+  for (let i = 0; i < triangles.length; i++) {
+    const triangle = triangles[i];
+    vertices[i * 9] = triangle[0][0];
+    vertices[i * 9 + 1] = triangle[0][1];
+    vertices[i * 9 + 2] = triangle[0][2];
+    vertices[i * 9 + 3] = triangle[1][0];
+    vertices[i * 9 + 4] = triangle[1][1];
+    vertices[i * 9 + 5] = triangle[1][2];
+    vertices[i * 9 + 6] = triangle[2][0];
+    vertices[i * 9 + 7] = triangle[2][1];
+    vertices[i * 9 + 8] = triangle[2][2];
+  }
+  
+  geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+  const scene = new THREE.Scene();
+  scene.add(new THREE.Mesh( geometry, new THREE.MeshBasicMaterial( { color: 0x000000 } ) ));
+  const result = new STLExporter().parse( scene, { binary: true } );
+	saveArrayBuffer( result, name);
+}
+
+function saveArrayBuffer( buffer, filename ) {
+  const br = document.createElement('br');
+  document.body.appendChild(br);
+  const link = document.createElement('a');
+  document.body.appendChild(link);
+  link.href = URL.createObjectURL( new Blob( [ buffer ], { type: 'application/octet-stream' } ) );
+  link.download = filename;
+  link.innerText = "Download " + filename;
+  if(document.querySelector("#autodownload").checked)link.click();
+}
+
+function createArray(length) {
+    let arr = new Array(length || 0), i = length;
+
+    if (arguments.length > 1) {
+        let args = Array.prototype.slice.call(arguments, 1);
+        while(i--) arr[length-1 - i] = [];
+    }
+    return arr;
+}
+</script>
